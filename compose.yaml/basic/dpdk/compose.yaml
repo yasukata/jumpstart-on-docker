@@ -1,0 +1,26 @@
+services:
+  img:
+    build: ../../../Dockerfile/dpdk
+    image: jumpstart-dpdk:latest
+    pull_policy: never
+  receiver:
+    image: jumpstart-dpdk:latest
+    pull_policy: never
+    cap_add:
+      - SYS_NICE
+      - IPC_LOCK
+    volumes:
+      - /dev/hugepages:/dev/hugepages
+      - ./tmp-sock:/var/run/dpdk-app
+    command: sh -c "unlink /var/run/dpdk-app/vhost0; /dpdk/install/bin/dpdk-testpmd -l 0,1 --proc-type=primary --file-prefix=pmd1 --vdev=net_vhost0,iface=/var/run/dpdk-app/vhost0,client=1 --no-pci --single-file-segments -- --nb-cores=1 --forward-mode=rxonly --stats-period=1"
+  sender:
+    image: jumpstart-dpdk:latest
+    pull_policy: never
+    cap_add:
+      - SYS_NICE
+      - IPC_LOCK
+    volumes:
+      - /dev/hugepages:/dev/hugepages
+      - ./tmp-sock:/var/run/dpdk-app
+    command: sh -c "sleep 1; /dpdk/install/bin/dpdk-testpmd -l 0,2 --proc-type=primary --file-prefix=pmd2 --vdev=net_virtio_user0,path=/var/run/dpdk-app/vhost0,server=1 --no-pci --single-file-segments -- --nb-cores=1 --forward-mode=txonly --txpkt=60"
+    tty: true
