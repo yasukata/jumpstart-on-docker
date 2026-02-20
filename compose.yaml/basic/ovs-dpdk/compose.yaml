@@ -1,0 +1,40 @@
+services:
+  img:
+    build: ../../../Dockerfile/ovs-dpdk
+    image: jumpstart-ovs-dpdk:latest
+    pull_policy: never
+  ovs-dpdk:
+    image: jumpstart-ovs-dpdk:latest
+    pull_policy: never
+    cap_add:
+      - SYS_NICE
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      - /dev/hugepages:/dev/hugepages
+      - ./tmp-sock:/ovs/install/var/run/openvswitch
+    command: sh -c "rm /ovs/install/var/run/openvswitch/br0.*; rm /ovs/install/var/run/openvswitch/db.sock; rm /ovs/install/var/run/openvswitch/ovs-vswitchd.*; rm /ovs/install/var/run/openvswitch/ovsdb-server.*; rm /ovs/install/var/run/openvswitch/vhost*; /ovs/install/share/openvswitch/scripts/ovs-ctl start; /ovs/install/bin/ovs-vsctl --no-wait set Open_vSwitch . other_config:dpdk-init=true; /ovs/install/share/openvswitch/scripts/ovs-ctl stop; /ovs/install/share/openvswitch/scripts/ovs-ctl start; /ovs/install/bin/ovs-vsctl del-br br0; ovs/install/bin/ovs-vsctl add-br br0 -- set bridge br0 datapath_type=netdev; /ovs/install/bin/ovs-vsctl add-port br0 dport0 -- set Interface dport0 type=dpdkvhostuserclient options:vhost-server-path=/ovs/install/var/run/openvswitch/vhost0; /ovs/install/bin/ovs-vsctl add-port br0 dport1 -- set Interface dport1 type=dpdkvhostuserclient options:vhost-server-path=/ovs/install/var/run/openvswitch/vhost1; /ovs/install/bin/ovs-vsctl show; tail -f /dev/null"
+  receiver:
+    image: jumpstart-ovs-dpdk:latest
+    pull_policy: never
+    cap_add:
+      - SYS_NICE
+      - IPC_LOCK
+    volumes:
+      - /dev/hugepages:/dev/hugepages
+      - ./tmp-sock:/var/run/dpdk-app
+    command: sh -c "sleep 2; /dpdk/install/bin/dpdk-testpmd -l 0,1 --proc-type=primary --file-prefix=pmd1 --vdev=net_virtio_user0,path=/var/run/dpdk-app/vhost0,server=1 --no-pci --single-file-segments -- --nb-cores=1 --forward-mode=rxonly --stats-period=1"
+  sender:
+    image: jumpstart-ovs-dpdk:latest
+    pull_policy: never
+    depends_on:
+      - receiver
+    cap_add:
+      - SYS_NICE
+      - IPC_LOCK
+    volumes:
+      - /dev/hugepages:/dev/hugepages
+      - ./tmp-sock:/var/run/dpdk-app
+    command: sh -c "sleep 2; /dpdk/install/bin/dpdk-testpmd -l 0,2 --proc-type=primary --file-prefix=pmd2 --vdev=net_virtio_user1,path=/var/run/dpdk-app/vhost1,server=1 --no-pci --single-file-segments -- --nb-cores=1 --forward-mode=txonly --txpkt=60"
+    tty: true
