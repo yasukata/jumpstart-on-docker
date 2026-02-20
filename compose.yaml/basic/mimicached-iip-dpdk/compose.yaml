@@ -1,0 +1,26 @@
+services:
+  img:
+    build: ../../../Dockerfile/mimicached-iip-dpdk
+    image: jumpstart-mimicached-iip-dpdk:latest
+    pull_policy: never
+  mimicached:
+    image: jumpstart-mimicached-iip-dpdk:latest
+    pull_policy: never
+    cap_add:
+      - SYS_NICE
+      - IPC_LOCK
+    volumes:
+      - /dev/hugepages:/dev/hugepages
+      - ./tmp-sock:/var/run/dpdk-app
+    command: sh -c "unlink /var/run/dpdk-app/vhost0; LD_LIBRARY_PATH=/dpdk/install/lib/dpdk /mimicached/a.out -l 1 --proc-type=primary --file-prefix=pmd1 --vdev=net_vhost0,iface=/var/run/dpdk-app/vhost0,client=1 --no-pci --single-file-segments -- -a 0,10.100.0.20 -e 0 -- -p 11211 -m 10000 -z 100000"
+  client:
+    image: jumpstart-mimicached-iip-dpdk:latest
+    pull_policy: never
+    cap_add:
+      - SYS_NICE
+      - IPC_LOCK
+    volumes:
+      - /dev/hugepages:/dev/hugepages
+      - ./tmp-sock:/var/run/dpdk-app
+    command: sh -c "sleep 2; LD_LIBRARY_PATH=/dpdk/install/lib/dpdk /bench-iip/a.out -l 2 --proc-type=primary --file-prefix=pmd2 --vdev=net_virtio_user0,path=/var/run/dpdk-app/vhost0,server=1 --no-pci --single-file-segments -- -a 0,10.100.0.10 -e 0 -- -s 10.100.0.20 -p 11211 -m \"```echo -e 'get a\\r\\n\0'```\" -c 64"
+    tty: true
