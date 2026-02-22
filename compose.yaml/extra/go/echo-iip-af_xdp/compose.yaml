@@ -1,0 +1,441 @@
+services:
+  img-bench-iip-af_xdp:
+    build: ../../../../Dockerfile/bench-iip-af_xdp
+    image: jumpstart-bench-iip-af_xdp:latest
+    pull_policy: never
+  img-go-echo-iip-af_xdp:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM ubuntu:24.04
+        RUN apt update; apt install -y unzip gcc make libnuma-dev libxdp-dev
+        ADD https://github.com/yasukata/bench-iip/archive/refs/heads/master.zip ./
+        RUN unzip ./master.zip; mv bench-iip-master bench-iip; rm master.zip
+        ADD https://github.com/yasukata/iip/archive/refs/heads/master.zip ./
+        RUN unzip ./master.zip; mv iip-master ./bench-iip/iip; rm master.zip
+        ADD https://github.com/yasukata/iip-af_xdp/archive/refs/heads/master.zip ./
+        RUN unzip ./master.zip; mv iip-af_xdp-master ./bench-iip/iip-af_xdp; rm master.zip
+        RUN mv /bench-iip/iip-af_xdp/main.c /bench-iip/iip-af_xdp/_main.c; echo "#define helper_ip4_get_connection_affinity __helper_ip4_get_connection_affinity" > /bench-iip/iip-af_xdp/main.c; echo "#include \"_main.c\"" >> /bench-iip/iip-af_xdp/main.c; echo "#undef helper_ip4_get_connection_affinity" >> /bench-iip/iip-af_xdp/main.c; echo "static uint16_t helper_ip4_get_connection_affinity(uint16_t protocol, uint32_t local_ip4_be, uint16_t local_port_be, uint32_t peer_ip4_be, uint16_t peer_port_be, void *opaque) { return 0; (void) protocol; (void) local_ip4_be; (void) local_port_be; (void) peer_ip4_be; (void) peer_port_be; (void) opaque; (void) __helper_ip4_get_connection_affinity; }" >> /bench-iip/iip-af_xdp/main.c
+        RUN apt install -y golang-go
+        RUN mv /bench-iip /c
+        RUN <<EOF cat > /c/iip-wrapper-go.c
+        #include <stdio.h>
+        #include <stdint.h>
+        #include <unistd.h>
+        #include <string.h>
+        #include <time.h>
+        #include <assert.h>
+        
+        static int printf_nothing(const char *format, ...) { (void) format; return 0; }
+        #define IIP_OPS_DEBUG_PRINTF printf_nothing
+        
+        #include "iip/main.c"
+        
+        static void iip_ops_util_now_ns(uint32_t t[3], void *opaque)
+        {
+        	struct timespec ts;
+        	assert(!clock_gettime(CLOCK_REALTIME, &ts));
+        	t[0] = (ts.tv_sec >> 32) & 0xffffffff;
+        	t[1] = (ts.tv_sec >>  0) & 0xffffffff;
+        	t[2] = ts.tv_nsec;
+        	{ /* unused */
+        		(void) opaque;
+        	}
+        }
+        
+        static volatile unsigned char __should_stop = 0;
+        
+        static uint8_t __app_should_stop(void *opaque)
+        {
+        	return __should_stop;
+        }
+        
+        #ifndef MAX_PORT_CNT
+        #define MAX_PORT_CNT (1024)
+        #endif
+        
+        extern uint8_t TcpAccept(void *, uint16_t, void *);
+        
+        static uint8_t iip_ops_tcp_accept(void *mem, void *m, void *opaque)
+        {
+        	return TcpAccept(mem, __iip_ntohs(PB_TCP(m)->dst_be), opaque);
+        }
+        
+        extern void *TcpAccepted(void *, void *, void *);
+        
+        static void *iip_ops_tcp_accepted(void *mem, void *handle, void *m, void *opaque)
+        {
+        	return TcpAccepted(mem, handle, opaque);
+        }
+        
+        extern void TcpReceived(void *, void *, void *, uint16_t, void *);
+        
+        static void iip_ops_tcp_payload(void *mem, void *handle, void *m,
+        				void *tcp_opaque, uint16_t head_off, uint16_t tail_off,
+        				void *opaque)
+        {
+        	TcpReceived(mem, handle, (void *)((uintptr_t) PB_TCP_PAYLOAD(m) + head_off), PB_TCP_PAYLOAD_LEN(m) - head_off - tail_off, opaque);
+        	iip_tcp_rxbuf_consumed(mem, handle, 1, opaque);
+        }
+        
+        extern void TcpClosed(void *, uint8_t *, uint32_t, uint16_t, uint8_t *, uint32_t, uint16_t, void *, void *);
+        
+        static void iip_ops_tcp_closed(void *handle,
+        			       uint8_t local_mac[], uint32_t local_ip4_be, uint16_t local_port_be,
+        			       uint8_t peer_mac[], uint32_t peer_ip4_be, uint16_t peer_port_be,
+        			       void *tcp_opaque, void *opaque)
+        {
+        	TcpClosed(handle, local_mac, local_ip4_be, local_port_be, peer_mac, peer_ip4_be, peer_port_be, tcp_opaque, opaque);
+        }
+        
+        static void iip_ops_arp_reply(void *_mem, void *m, void *opaque) { }
+        static void iip_ops_icmp_reply(void *_mem, void *m, void *opaque) { }
+        static void *iip_ops_tcp_connected(void *mem, void *handle, void *m, void *opaque) { }
+        static void iip_ops_tcp_acked(void *mem, void *handle, void *m, void *tcp_opaque, void *opaque) {}
+        static void iip_ops_udp_payload(void *mem, void *m, void *opaque) { }
+        static void *__app_thread_init(void *workspace, uint16_t core_id, void *opaque) { return NULL; }
+        static void __app_exit(void *app_global_opaque) { }
+        static void *__app_init(int argc, char *const *argv) { return NULL; }
+        
+        static int num_iosub_cores(void);
+        
+        static _Atomic uint16_t __num_ready_cores = 0;
+        static volatile uint8_t __iosub_ready = 0;
+        
+        #if IOSUB_TYPE == 1
+        #define __app_loop(mem, mac, ip4_be, next_us, opaque) \
+        	do { \
+        		if (++__num_ready_cores == num_iosub_cores()) \
+        			__iosub_ready = 1; \
+        		while (!__app_should_stop(opaque)) \
+        			usleep(10000); \
+        	} while (0)
+        #elif IOSUB_TYPE == 2
+        #include <arpa/inet.h>
+        
+        #ifndef MAX_THREAD
+        #define MAX_THREAD (256)
+        #endif
+        
+        struct af_xdp_rx {
+        	void *fill_ring;
+        	void *rx_ring;
+        };
+        
+        static struct af_xdp_rx __af_xdp_rx[MAX_THREAD];
+        
+        #define __app_loop(__mem, __mac, __ip4_be, __next_us, __opaque) \
+        	do { \
+        		assert(ti->id < MAX_THREAD); \
+        		__af_xdp_rx[ti->id].fill_ring = &fill_ring; \
+        		__af_xdp_rx[ti->id].rx_ring = &rx_ring; \
+        		if (++__num_ready_cores == num_iosub_cores()) \
+        			__iosub_ready = 1; \
+        		while (!__app_should_stop(opaque)) \
+        			usleep(10000); \
+        	} while (0)
+        #else
+        #error "invalid IOSUB_TYPE"
+        #endif
+        
+        #define M2S(s) _M2S(s)
+        #define _M2S(s) #s
+        #include M2S(IOSUB_MAIN_C)
+        #undef _M2S
+        #undef M2S
+        
+        #if IOSUB_TYPE == 1
+        static int num_iosub_cores(void)
+        {
+        	return rte_lcore_count();
+        }
+        
+        static void do_iip_run(void *workspace, uint16_t core_idx)
+        {
+        	uint16_t portid;
+        	RTE_ETH_FOREACH_DEV(portid) {
+        		void *opaque[1] = { (void *) &io_opaque[core_idx][portid] };
+        		{
+        			struct rte_mbuf *m[ETH_RX_BATCH];
+        			uint16_t cnt = rte_eth_rx_burst(portid, core_idx, m, ETH_RX_BATCH);
+        			{
+        				uint32_t _next_us;
+        				iip_run(workspace, ports_eth_addr[portid].addr_bytes,
+        						ip4_addr_be[portid], (void **) m, cnt, &_next_us, opaque);
+        			}
+        		}
+        	}
+        }
+        
+        #elif IOSUB_TYPE == 2
+        static int num_iosub_cores(void)
+        {
+        	return __iosub_num_cores;
+        }
+        
+        static void do_iip_run(void *workspace, uint16_t core_idx)
+        {
+        	void *opaque[1] = { (void *) &io_opaque[core_idx] };
+        	{
+        		struct __xpb *m[ETH_RX_BATCH] = { 0 };
+        		uint32_t idx, cnt;
+        		cnt = xsk_ring_cons__peek(__af_xdp_rx[core_idx].rx_ring, ETH_RX_BATCH, &idx);
+        		if (cnt) {
+        			{
+        				uint32_t i;
+        				for (i = 0; i < cnt; i++) {
+        					const struct xdp_desc *d = xsk_ring_cons__rx_desc(__af_xdp_rx[core_idx].rx_ring, idx + i);
+        					assert((m[i] = __iip_ops_pkt_alloc(opaque)) != NULL);
+        					m[i]->addr = d->addr;
+        					m[i]->len = d->len;
+        					__IOSUB_BUF_ADDR_ASSERT(&io_opaque[core_idx], d->addr);
+        					assert(__IOSUB_BUF_REFCNT(&io_opaque[core_idx], d->addr) == 1);
+        				}
+        			}
+        			{
+        				uint32_t __idx;
+        				while (cnt != xsk_ring_prod__reserve(__af_xdp_rx[core_idx].fill_ring, cnt, &__idx)) {
+        					if (__IOSUB_BUSY_POLL_SOCK || xsk_ring_prod__needs_wakeup(__af_xdp_rx[core_idx].fill_ring))
+        						assert(recvfrom(xsk_socket__fd(io_opaque[core_idx].af_xdp.xsk), NULL, 0, MSG_DONTWAIT, NULL, 0) != -1);
+        				}
+        				{
+        					uint32_t i;
+        					for (i = 0; i < cnt; i++) {
+        						uint64_t addr = __iip_buf_alloc(opaque);
+        						assert(addr != UINT64_MAX);
+        						__IOSUB_BUF_ADDR_ASSERT(&io_opaque[core_idx], addr);
+        						assert(__IOSUB_BUF_REFCNT(&io_opaque[core_idx], addr) == 1);
+        						*xsk_ring_prod__fill_addr(__af_xdp_rx[core_idx].fill_ring, __idx + i) = addr;
+        					}
+        				}
+        			}
+        			xsk_ring_cons__release(__af_xdp_rx[core_idx].rx_ring, cnt);
+        			xsk_ring_prod__submit(__af_xdp_rx[core_idx].fill_ring, cnt);
+        			io_opaque[core_idx].stat[stat_idx].eth.rx_pkt += cnt;
+        		} else {
+        			if (__IOSUB_BUSY_POLL_SOCK || xsk_ring_prod__needs_wakeup(__af_xdp_rx[core_idx].fill_ring))
+        				assert(recvfrom(xsk_socket__fd(io_opaque[core_idx].af_xdp.xsk), NULL, 0, MSG_DONTWAIT, NULL, 0) != -1);
+        		}
+        		{ /* execute network stack */
+        			uint32_t _next_us = 1000000U;
+        			iip_run(workspace, mac_addr, ip4_addr_be, (void **) m, cnt, &_next_us, opaque);
+        		}
+        	}
+        }
+        #else
+        #error "invalid IOSUB_TYPE"
+        #endif
+        
+        static uint8_t iosub_ready(void)
+        {
+        	return __iosub_ready;
+        }
+        
+        static void do_tcp_send(void *mem, void *handle, void *data, uint16_t datalen, void *opaque)
+        {
+        	void *pkt = iip_ops_pkt_alloc(opaque);
+        	assert(pkt);
+        	memcpy(iip_ops_pkt_get_data(pkt, opaque), data, datalen);
+        	iip_ops_pkt_set_len(pkt, datalen, opaque);
+        	iip_tcp_send(mem, handle, pkt, 0, opaque);
+        }
+        
+        #define MAX_ARGS (128)	
+        
+        static void *__iip_init_thread(void *data)
+        {
+        	char *args_str = strdup(getenv("NET_IIP_ARGS"));
+        	printf("arguments: %s\n", args_str);
+        	{
+        		int argc = 1;
+        		void *argv[MAX_ARGS];
+        		argv[0] = "app";
+        		while (1) {
+        			assert(argc < MAX_ARGS);
+        			if (argc == 1)
+        				argv[argc] = strtok(args_str, " ");
+        			else
+        				argv[argc] = strtok(NULL, " ");
+        			if (!argv[argc])
+        				break;
+        			argc++;
+        		}
+        		(void) __iosub_main(argc, (char *const *) argv);
+        	}
+        	free(args_str);
+        	pthread_exit(NULL);
+        	{ /* unused */
+        		(void) data;
+        	}
+        }
+        
+        static pthread_t __th;
+        
+        static int iip_init(void)
+        {
+        	if (!getenv("NET_IIP_ARGS"))
+        		return -1;
+        	else {
+        		int err = pthread_create(&__th, NULL, __iip_init_thread, NULL);
+        		assert(!err);
+        	}
+        	return 0;
+        }
+        
+        static void iip_exit(void)
+        {
+        	__should_stop = 1;
+        	{
+        		int err = pthread_join(__th, NULL);
+        		assert(!err);
+        	}
+        }
+        EOF
+        RUN <<EOF cat > echo-iip.go
+        /*
+        how to build and run
+        
+        directories
+        .
+        ├── c
+        │   ├── example-iip-wrapper-go.c
+        │   ├── iip (https://github.com/yasukata/iip)
+        │   ├── iip-af_xdp (https://github.com/yasukata/iip-af_xdp)
+        │   └── iip-dpdk (https://github.com/yasukata/iip-dpdk)
+        └── example-iip-wrapper-go.go
+        
+        DPDK (please change DPDK_LIB_DIR depending on the environment)
+        build   $ go clean -cache -modcache; export DPDK_LIB_DIR=c/iip-dpdk/dpdk/install/lib/x86_64-linux-gnu; CGO_CFLAGS="-O3 -DIOSUB_MAIN_C=./iip-dpdk/main.c -DIOSUB_TYPE=1 `PKG_CONFIG_PATH=$${DPDK_LIB_DIR}/pkgconfig pkg-config --cflags libdpdk`" CGO_LDFLAGS="`PKG_CONFIG_PATH=$${DPDK_LIB_DIR}/pkgconfig pkg-config --libs libdpdk`" CGO_CFLAGS_ALLOW="-moutline-atomics" go build example-iip-wrapper-go.go
+        run     $ export DPDK_LIB_DIR=c/iip-dpdk/dpdk/install/lib/x86_64-linux-gnu; sudo LD_LIBRARY_PATH=$${DPDK_LIB_DIR} NET_IIP_ARGS="-l 0 --proc-type=primary --file-prefix=pmd1 --vdev=net_tap0,iface=tap01 -- -a 0,10.100.0.20" ./example-iip-wrapper-go
+        connect $ sudo ifconfig tap01 10.100.0.10 promisc up; telnet 10.100.0.20 10000
+        
+        AF_XDP
+        build      $ go clean -cache -modcache; CGO_CFLAGS="-O3 -DIOSUB_MAIN_C=./iip-af_xdp/main.c -DIOSUB_TYPE=2 -DXSK_HEADER_LIBXDP -D_GNU_SOURCE" CGO_LDFLAGS="-lnuma -lxdp" go build example-iip-wrapper-go.go
+        veth setup $ sudo ip netns add net1; sudo ip netns add net2; sudo ip link add net1-eth0 type veth peer name net2-eth0; sudo ip link set net1-eth0 netns net1; sudo ip link set net2-eth0 netns net2; sudo ip netns exec net1 ethtool -K net1-eth0 tx off; sudo ip netns exec net2 ethtool -K net2-eth0 tx off; sudo ip netns exec net1 ip address add 10.100.0.20/24 dev net1-eth0; sudo ip netns exec net2 ip address add 10.100.0.10/24 dev net2-eth0; sudo ip netns exec net1 ip link set net1-eth0 up; sudo ip netns exec net2 ip link set net2-eth0 up
+        run        $ sudo NET_IIP_ARGS="-l 0 -i net1-eth0" ip netns exec net1 ./example-iip-wrapper-go
+        connect    $ sudo ip netns exec net2 telnet 10.100.0.20 10000
+        */
+        
+        package main
+        
+        /*
+        #include "c/iip-wrapper-go.c"
+        */
+        import "C"
+        
+        import (
+        	"sync"
+        	"unsafe"
+        )
+        
+        func TcpSend(mem unsafe.Pointer, handle unsafe.Pointer, b []byte, opaque unsafe.Pointer) {
+        	C.do_tcp_send(mem, handle, unsafe.Pointer(unsafe.SliceData(b)), C.uint16_t(len(b)), opaque)
+        }
+        
+        //export TcpAccept
+        func TcpAccept(mem unsafe.Pointer, port C.uint16_t, opaque unsafe.Pointer) C.uint8_t {
+        	if port == 10000 {
+        		return 1
+        	} else {
+        		return 0
+        	}
+        }
+        
+        //export TcpAccepted
+        func TcpAccepted(mem unsafe.Pointer, handle unsafe.Pointer, opaque unsafe.Pointer) unsafe.Pointer {
+        	return nil
+        }
+        
+        //export TcpReceived
+        func TcpReceived(mem unsafe.Pointer, handle unsafe.Pointer, data unsafe.Pointer, datalen C.uint16_t, opaque unsafe.Pointer) {
+        	b := C.GoBytes(data, C.int(datalen))
+        	TcpSend(mem, handle, b, opaque)
+        }
+        
+        //export TcpClosed
+        func TcpClosed(mem unsafe.Pointer, local_mac *C.uint8_t, local_ip4_be C.uint32_t, local_port_be C.uint16_t, peer_mac *C.uint8_t, peer_ip4_be C.uint32_t, peer_port_be C.uint16_t, tcp_opaque unsafe.Pointer, opaque unsafe.Pointer) {
+        }
+        
+        type Workspace struct {
+        	Ptr unsafe.Pointer
+        }
+        
+        func allocThreadMem() *Workspace {
+        	w := new(Workspace)
+        	w.Ptr = C.malloc(C.size_t(C.iip_workspace_size()))
+        	for i := 0; i < 8192; i++ {
+        		C.iip_add_pb(w.Ptr, C.malloc(C.size_t(C.iip_workspace_size())))
+        	}
+        	for i := 0; i < 512; i++ {
+        		C.iip_add_tcp_conn(w.Ptr, C.malloc(C.size_t(C.iip_tcp_conn_size())))
+        	}
+        	return w
+        }
+        
+        func numIosubCores() int {
+        	return int(C.num_iosub_cores())
+        }
+        
+        func iosubReady() bool {
+        	if int(C.iosub_ready()) == 0 {
+        		return false
+        	} else {
+        		return true
+        	}
+        }
+        
+        func runNet(w *Workspace, core_idx int) {
+        	C.do_iip_run(w.Ptr, C.uint16_t(core_idx));
+        }
+        
+        func doInit() {
+        	C.iip_init();
+        }
+        
+        func doExit() {
+        	C.iip_exit();
+        }
+        
+        func main() {
+        	doInit()
+        	for (!iosubReady()) { }
+        	{
+        		var wg sync.WaitGroup
+        		for i := 0; i < numIosubCores(); i++ {
+        			wg.Add(1)
+        			go func(core_idx int) {
+        				w := allocThreadMem()
+        				for {
+        					runNet(w, core_idx)
+        				}
+        			}(i)
+        		}
+        		wg.Wait()
+        	}
+        	doExit()
+        }
+        EOF
+        RUN CGO_CFLAGS="-O3 -DIOSUB_MAIN_C=/c/iip-af_xdp/main.c -DIOSUB_TYPE=2 -DXSK_HEADER_LIBXDP -D_GNU_SOURCE" CGO_LDFLAGS="-lnuma -lxdp" go build echo-iip.go
+    image: jumpstart-go-echo-iip-af_xdp:latest
+    pull_policy: never
+  server:
+    image: jumpstart-go-echo-iip-af_xdp:latest
+    cap_add:
+      - SYS_NICE
+      - SYS_ADMIN
+      - NET_ADMIN
+      - IPC_LOCK
+      - BPF
+    command: sh -c "NET_IIP_ARGS=\"-l 0 -i eth0\" /echo-iip"
+  client:
+    image: jumpstart-bench-iip-af_xdp:latest
+    pull_policy: never
+    depends_on:
+      - server
+    cap_add:
+      - SYS_NICE
+      - SYS_ADMIN
+      - NET_ADMIN
+      - IPC_LOCK
+      - BPF
+    command: sh -c "/bench-iip/a.out -l 1 -i eth0 -- -s `getent hosts server | awk '{ print $1 }'` -p 10000 -l 1 -c 64"
