@@ -115,3 +115,12 @@ docker compose -f jumpstart-on-docker/compose.yaml/extra/ovs-dpdk/bench-iip-dpdk
 docker compose -f jumpstart-on-docker/compose.yaml/extra/ovs-dpdk/mimicached-iip-dpdk/compose.yaml up
 ```
 
+## An echo server written in Go and using iip and AF_XDP over cgo
+
+- [compose.yaml/extra/go/echo-iip-af_xdp](compose.yaml/extra/go/echo-iip-af_xdp)
+- A container runs an echo server which is written in Go and uses iip and AF_XDP through cgo, and another container sends requests to it using the bench-iip application using AF_XDP. The two containers use veth interfaces associated with the same Linux bridge.
+
+```
+docker compose -f jumpstart-on-docker/compose.yaml/extra/go/echo-iip-af_xdp/compose.yaml up
+```
+
