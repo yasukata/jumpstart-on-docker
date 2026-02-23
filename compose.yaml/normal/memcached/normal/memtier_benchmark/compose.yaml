@@ -1,0 +1,13 @@
+services:
+  memcached:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM ubuntu:24.04
+        RUN apt update; apt install -y memcached
+    command: sh -c "useradd memcached; memcached -u memcached -m 1024 -t 1 -p 11211"
+  memtier_benchmark:
+    depends_on:
+      - memcached
+    image: redislabs/memtier_benchmark:2.2.0
+    entrypoint: sh -c "sleep 2; memtier_benchmark -h memcached -p 11211 -P memcache_text -t 3 -c 64 --key-maximum 1 --ratio=0:1 --test-time=10"
