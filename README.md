@@ -103,6 +103,16 @@ docker compose -f jumpstart-on-docker/compose.yaml/basic/mimicached-iip-af_xdp/c
 docker compose -f jumpstart-on-docker/compose.yaml/extra/dpdk-l2fwd/dpdk-testpmd/compose.yaml up
 ```
 
+## dpdk-l2fwd bridging [bench-iip](https://github.com/yasukata/bench-iip) containers
+
+- [compose.yaml/extra/dpdk-l2fwd/bench-iip-dpdk](compose.yaml/extra/dpdk-l2fwd/bench-iip-dpdk)
+- Two containers run the bench-iip application using DPDK: one serves as the server and the other acts as the client. The data is forwarded by the dpdk-l2fwd application run by another container. The containers are connected via the virtio/vhost-user interfaces.
+- [Huge pages configuration](#huge-pages-configuration-for-dpdk) is necessary.
+
+```
+docker compose -f jumpstart-on-docker/compose.yaml/extra/dpdk-l2fwd/bench-iip-dpdk/compose.yaml up
+```
+
 ## OVS-DPDK bridging [bench-iip](https://github.com/yasukata/bench-iip) containers
 
 - [compose.yaml/extra/ovs-dpdk/bench-iip-dpdk](compose.yaml/extra/ovs-dpdk/bench-iip-dpdk)
