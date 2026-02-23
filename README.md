@@ -93,7 +93,7 @@ docker compose -f jumpstart-on-docker/compose.yaml/basic/mimicached-iip-dpdk/com
 docker compose -f jumpstart-on-docker/compose.yaml/basic/mimicached-iip-af_xdp/compose.yaml up
 ```
 
-## OVS-DPDK bridging bench-iip containers
+## OVS-DPDK bridging [bench-iip](https://github.com/yasukata/bench-iip) containers
 
 - [compose.yaml/extra/ovs-dpdk/bench-iip-dpdk](compose.yaml/extra/ovs-dpdk/bench-iip-dpdk)
 - Two containers run the bench-iip application using DPDK: one serves as the server and the other acts as the client. The data is forwarded by an OVS-DPDK switch run by another container. The containers are connected via the virtio/vhost-user interfaces.
@@ -104,7 +104,7 @@ docker compose -f jumpstart-on-docker/compose.yaml/basic/mimicached-iip-af_xdp/c
 docker compose -f jumpstart-on-docker/compose.yaml/extra/ovs-dpdk/bench-iip-dpdk/compose.yaml up
 ```
 
-## OVS-DPDK bridging mimicached and bench-iip containers
+## OVS-DPDK bridging [mimicached](https://github.com/yasukata/mimicached) and [bench-iip](https://github.com/yasukata/bench-iip) containers
 
 - [compose.yaml/extra/ovs-dpdk/mimicached-iip-dpdk](compose.yaml/extra/ovs-dpdk/mimicached-iip-dpdk)
 - A container runs mimicached using DPDK, and another container sends requests to it using the bench-iip application using DPDK. The data is forwarded by an OVS-DPDK switch run by another container. The containers are connected via the virtio/vhost-user interfaces.
@@ -115,7 +115,7 @@ docker compose -f jumpstart-on-docker/compose.yaml/extra/ovs-dpdk/bench-iip-dpdk
 docker compose -f jumpstart-on-docker/compose.yaml/extra/ovs-dpdk/mimicached-iip-dpdk/compose.yaml up
 ```
 
-## An echo server written in Go and using iip and AF_XDP over cgo
+## An echo server written in Go and using [iip](https://github.com/yasukata/iip) and AF_XDP over cgo
 
 - [compose.yaml/extra/go/echo-iip-af_xdp](compose.yaml/extra/go/echo-iip-af_xdp)
 - A container runs an echo server which is written in Go and uses iip and AF_XDP through cgo, and another container sends requests to it using the bench-iip application using AF_XDP. The two containers use veth interfaces associated with the same Linux bridge.
