@@ -144,3 +144,12 @@ docker compose -f jumpstart-on-docker/compose.yaml/extra/ovs-dpdk/mimicached-iip
 docker compose -f jumpstart-on-docker/compose.yaml/extra/go/echo-iip-af_xdp/compose.yaml up
 ```
 
+## The official memcached server responding to the [bench-iip](https://github.com/yasukata/bench-iip) application using AF_XDP
+
+- [compose.yaml/normal/memcached/bench-iip-af_xdp](compose.yaml/normal/memcached/bench-iip-af_xdp)
+- A container runs the official memcached server implementation, and another container sends requests to it using the bench-iip application using AF_XDP. The two containers use veth interfaces associated with the same Linux bridge.
+
+```
+docker compose -f jumpstart-on-docker/compose.yaml/normal/memcached/bench-iip-af_xdp/compose.yaml up
+```
+
