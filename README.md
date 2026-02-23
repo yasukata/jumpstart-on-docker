@@ -153,3 +153,12 @@ docker compose -f jumpstart-on-docker/compose.yaml/extra/go/echo-iip-af_xdp/comp
 docker compose -f jumpstart-on-docker/compose.yaml/normal/memcached/bench-iip-af_xdp/compose.yaml up
 ```
 
+## The official [memtier_benchmark](https://hub.docker.com/r/redislabs/memtier_benchmark/) client sending requests to [mimicached](https://github.com/yasukata/mimicached) using AF_XDP
+
+- [compose.yaml/normal/memtier_benchmark/mimicached-iip-af_xdp](compose.yaml/normal/memtier_benchmark/mimicached-iip-af_xdp)
+- A container runs the official memtier_benchmark client to send requests to a mimicached server using AF_XDP on another container. The two containers use veth interfaces associated with the same Linux bridge.
+
+```
+docker compose -f jumpstart-on-docker/compose.yaml/normal/memtier_benchmark/mimicached-iip-af_xdp/compose.yaml up
+```
+
