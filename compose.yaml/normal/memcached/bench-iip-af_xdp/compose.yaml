@@ -1,0 +1,23 @@
+services:
+  memcached:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM ubuntu:24.04
+        RUN apt update; apt install -y memcached ethtool
+    cap_add:
+      - NET_ADMIN
+    command: sh -c "ethtool -K eth0 rx off; useradd memcached; memcached -u memcached -m 1024 -t 1"
+  client:
+    build: ../../../../Dockerfile/bench-iip-af_xdp
+    image: jumpstart-bench-iip-af_xdp:latest
+    pull_policy: never
+    depends_on:
+      - memcached
+    cap_add:
+      - SYS_NICE
+      - SYS_ADMIN
+      - NET_ADMIN
+      - IPC_LOCK
+      - BPF
+    command: sh -c "/bench-iip/a.out -l 1 -i eth0 -- -s `getent hosts memcached | awk '{ print $1 }'` -p 11211 -m \"```echo -e 'get a\\r\\n\0'```\" -c 64"
