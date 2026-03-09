@@ -7,7 +7,7 @@ services:
         RUN apt update; apt install -y memcached ethtool
     cap_add:
       - NET_ADMIN
-    command: sh -c "ethtool -K eth0 rx off; useradd memcached; memcached -u memcached -m 1024 -t 1"
+    command: sh -c "ethtool -K eth0 rx off tx off; useradd memcached; memcached -u memcached -m 1024 -t 1"
   client:
     build: ../../../../Dockerfile/bench-iip-af_xdp
     image: jumpstart-bench-iip-af_xdp:latest

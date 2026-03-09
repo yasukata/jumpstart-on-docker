@@ -19,4 +19,4 @@ services:
       - mimicached
     cap_add:
       - NET_ADMIN
-    entrypoint: sh -c "ethtool -K eth0 rx off; memtier_benchmark -h mimicached -p 11211 -P memcache_text -t 3 -c 64 --key-maximum 1 --ratio=0:1 --test-time=10"
+    entrypoint: sh -c "ethtool -K eth0 rx off tx off; memtier_benchmark -h mimicached -p 11211 -P memcache_text -t 3 -c 64 --key-maximum 1 --ratio=0:1 --test-time=10"

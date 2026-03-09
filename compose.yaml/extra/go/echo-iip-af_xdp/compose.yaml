@@ -311,7 +311,7 @@ services:
         
         AF_XDP
         build      $ go clean -cache -modcache; CGO_CFLAGS="-O3 -DIOSUB_MAIN_C=./iip-af_xdp/main.c -DIOSUB_TYPE=2 -DXSK_HEADER_LIBXDP -D_GNU_SOURCE" CGO_LDFLAGS="-lnuma -lxdp" go build example-iip-wrapper-go.go
-        veth setup $ sudo ip netns add net1; sudo ip netns add net2; sudo ip link add net1-eth0 type veth peer name net2-eth0; sudo ip link set net1-eth0 netns net1; sudo ip link set net2-eth0 netns net2; sudo ip netns exec net1 ethtool -K net1-eth0 tx off; sudo ip netns exec net2 ethtool -K net2-eth0 tx off; sudo ip netns exec net1 ip address add 10.100.0.20/24 dev net1-eth0; sudo ip netns exec net2 ip address add 10.100.0.10/24 dev net2-eth0; sudo ip netns exec net1 ip link set net1-eth0 up; sudo ip netns exec net2 ip link set net2-eth0 up
+        veth setup $ sudo ip netns add net1; sudo ip netns add net2; sudo ip link add net1-eth0 type veth peer name net2-eth0; sudo ip link set net1-eth0 netns net1; sudo ip link set net2-eth0 netns net2; sudo ip netns exec net1 ethtool -K net1-eth0 rx off tx off; sudo ip netns exec net2 ethtool -K net2-eth0 rx off tx off; sudo ip netns exec net1 ip address add 10.100.0.20/24 dev net1-eth0; sudo ip netns exec net2 ip address add 10.100.0.10/24 dev net2-eth0; sudo ip netns exec net1 ip link set net1-eth0 up; sudo ip netns exec net2 ip link set net2-eth0 up
         run        $ sudo NET_IIP_ARGS="-l 0 -i net1-eth0" ip netns exec net1 ./example-iip-wrapper-go
         connect    $ sudo ip netns exec net2 telnet 10.100.0.20 10000
         */
