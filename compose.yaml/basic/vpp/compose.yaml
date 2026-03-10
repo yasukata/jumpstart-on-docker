@@ -1,0 +1,60 @@
+configs:
+  startup.conf:
+    content: |
+      unix {cli-listen /run/vpp/cli-vpp.sock}
+      api-segment { prefix vpp }
+      plugins { plugin dpdk_plugin.so { enable } }
+      cpu {
+        main-core 0
+        corelist-workers 3
+      }
+      dpdk {
+        no-pci
+        vdev net_vhost_user0,iface=/var/run/dpdk-app/vhost0,client=1
+        vdev net_vhost_user1,iface=/var/run/dpdk-app/vhost1,client=1
+      }
+services:
+  img-vpp:
+    build: ../../../Dockerfile/vpp
+    image: jumpstart-vpp:latest
+    pull_policy: never
+  img-dpdk:
+    build: ../../../Dockerfile/dpdk
+    image: jumpstart-dpdk:latest
+    pull_policy: never
+  vpp-l2:
+    image: jumpstart-vpp:latest
+    pull_policy: never
+    cap_add:
+      - SYS_NICE
+      - IPC_LOCK
+    volumes:
+      - /dev/hugepages:/dev/hugepages
+      - ./tmp-sock:/var/run/dpdk-app
+    configs:
+      - source: startup.conf
+        target: /startup.conf
+    command: sh -c "/usr/bin/vpp -c /startup.conf; sleep 2; /usr/bin/vppctl -s /var/run/vpp/cli-vpp.sock set interface state VhostEthernet0 up; /usr/bin/vppctl -s /var/run/vpp/cli-vpp.sock set interface state VhostEthernet1 up; sleep 2; /usr/bin/vppctl -s /var/run/vpp/cli-vpp.sock set interface l2 bridge VhostEthernet0 100; /usr/bin/vppctl -s /var/run/vpp/cli-vpp.sock set interface l2 bridge VhostEthernet1 100; tail -f /dev/null"
+  receiver:
+    image: jumpstart-dpdk:latest
+    pull_policy: never
+    cap_add:
+      - SYS_NICE
+      - IPC_LOCK
+    volumes:
+      - /dev/hugepages:/dev/hugepages
+      - ./tmp-sock:/var/run/dpdk-app
+    command: sh -c "rm /var/run/dpdk-app/vhost0; /dpdk/install/bin/dpdk-testpmd -l 0,1 --proc-type=primary --file-prefix=pmd1 --vdev=net_virtio_user0,path=/var/run/dpdk-app/vhost0,server=1 --no-pci --single-file-segments -- --nb-cores=1 --forward-mode=rxonly --stats-period=1"
+  sender:
+    image: jumpstart-dpdk:latest
+    pull_policy: never
+    depends_on:
+      - receiver
+    cap_add:
+      - SYS_NICE
+      - IPC_LOCK
+    volumes:
+      - /dev/hugepages:/dev/hugepages
+      - ./tmp-sock:/var/run/dpdk-app
+    command: sh -c "rm /var/run/dpdk-app/vhost1; /dpdk/install/bin/dpdk-testpmd -l 0,2 --proc-type=primary --file-prefix=pmd2 --vdev=net_virtio_user1,path=/var/run/dpdk-app/vhost1,server=1 --no-pci --single-file-segments -- --nb-cores=1 --forward-mode=txonly --txpkt=60"
+    tty: true
