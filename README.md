@@ -51,6 +51,17 @@ docker compose -f jumpstart-on-docker/compose.yaml/basic/dpdk/compose.yaml up
 docker compose -f jumpstart-on-docker/compose.yaml/basic/ovs-dpdk/compose.yaml up
 ```
 
+## VPP installation
+
+- [Dockerfile/vpp](Dockerfile/vpp)
+- [compose.yaml/basic/vpp](compose.yaml/basic/vpp)
+- Two containers, running testpmd, send and receive data over a VPP switch, which is run by another container. The containers are connected via the virtio/vhost-user interfaces.
+- [Huge pages configuration](#huge-pages-configuration-for-dpdk) is necessary.
+
+```
+docker compose -f jumpstart-on-docker/compose.yaml/basic/vpp/compose.yaml up
+```
+
 ## [bench-iip](https://github.com/yasukata/bench-iip) on DPDK
 
 - [Dockerfile/bench-iip-dpdk](Dockerfile/bench-iip-dpdk)
