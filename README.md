@@ -146,6 +146,16 @@ docker compose -f jumpstart-on-docker/compose.yaml/extra/ovs-dpdk/bench-iip-dpdk
 docker compose -f jumpstart-on-docker/compose.yaml/extra/ovs-dpdk/mimicached-iip-dpdk/compose.yaml up
 ```
 
+## VPP bridging [bench-iip](https://github.com/yasukata/bench-iip) containers
+
+- [compose.yaml/extra/vpp/l2bridge/dpdk/bench-iip-dpdk/compose.yaml](compose.yaml/extra/vpp/l2bridge/dpdk/bench-iip-dpdk/compose.yaml)
+- Two containers run the bench-iip application using DPDK: one serves as the server and the other acts as the client. The data is forwarded by a VPP switch run by another container. The containers are connected via the virtio/vhost-user interfaces.
+- [Huge pages configuration](#huge-pages-configuration-for-dpdk) is necessary.
+
+```
+docker compose -f jumpstart-on-docker/compose.yaml/extra/vpp/l2bridge/dpdk/bench-iip-dpdk/compose.yaml up
+```
+
 ## An echo server written in Go and using [iip](https://github.com/yasukata/iip) and AF_XDP over cgo
 
 - [compose.yaml/extra/go/echo-iip-af_xdp](compose.yaml/extra/go/echo-iip-af_xdp)
